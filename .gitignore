@@ -1,0 +1,27 @@
+# Visual Studio
+.vs/
+*.VC.db
+*.opensdf
+*.sdf
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Unreal generated folders
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Build/cache/logs
+*.log
+*.tmp
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional Rider/JetBrains
+.idea/

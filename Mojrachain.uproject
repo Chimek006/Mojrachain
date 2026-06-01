@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.7",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "Mojrachain",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

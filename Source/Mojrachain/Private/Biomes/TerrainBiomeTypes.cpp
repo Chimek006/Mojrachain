@@ -1,0 +1,157 @@
+#include "Biomes/TerrainBiomeTypes.h"
+
+FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiome Biome)
+{
+	FBiomeTerrainSettings Settings;
+
+	switch (Biome)
+	{
+	case ETerrainBiome::Grassland:
+		Settings.HeightScale = 420.0f;
+		Settings.NoiseScale = 0.2f;
+		Settings.Octaves = 4;
+		Settings.Persistence = 0.5f;
+		Settings.Lacunarity = 1.95f;
+		Settings.HeightPower = 1.4f;
+		Settings.DetailStrength = 0.04f;
+		Settings.DetailNoiseScale = 1.6f;
+		Settings.RidgeStrength = 0.0f;
+		Settings.RidgeNoiseScale = 0.8f;
+		Settings.MountainSettings.bEnabled = false;
+		Settings.SmoothingIterations = 3;
+		Settings.SmoothingStrength = 0.48f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Forest:
+		Settings.HeightScale = 540.0f;
+		Settings.NoiseScale = 0.34f;
+		Settings.Octaves = 5;
+		Settings.Persistence = 0.6f;
+		Settings.Lacunarity = 2.2f;
+		Settings.HeightPower = 1.25f;
+		Settings.DetailStrength = 0.16f;
+		Settings.DetailNoiseScale = 3.2f;
+		Settings.RidgeStrength = 0.08f;
+		Settings.RidgeNoiseScale = 1.25f;
+		Settings.MountainSettings.bEnabled = false;
+		Settings.SmoothingIterations = 1;
+		Settings.SmoothingStrength = 0.18f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Hills:
+		Settings.HeightScale = 940.0f;
+		Settings.NoiseScale = 0.7f;
+		Settings.Octaves = 1;
+		Settings.Persistence = 0.48f;
+		Settings.Lacunarity = 1.85f;
+		Settings.HeightPower = 1.05f;
+		Settings.DetailStrength = 0.04f;
+		Settings.DetailNoiseScale = 1.25f;
+		Settings.RidgeStrength = 0.02f;
+		Settings.RidgeNoiseScale = 0.7f;
+		Settings.MountainSettings.bEnabled = true;
+		Settings.MountainSettings.Strength = 0.08f;
+		Settings.MountainSettings.Radius = 0.95f;
+		Settings.MountainSettings.Sharpness = 1.1f;
+		Settings.MountainSettings.CountMin = 0;
+		Settings.MountainSettings.CountMax = 0;
+		Settings.SmoothingIterations = 5;
+		Settings.SmoothingStrength = 0.64f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Desert:
+		Settings.HeightScale = 500.0f;
+		Settings.NoiseScale = 0.03f;
+		Settings.Octaves = 2;
+		Settings.Persistence = 0.75f;
+		Settings.Lacunarity = 1.5f;
+		Settings.HeightPower = 1.55f;
+		Settings.DetailStrength = 0.2f;
+		Settings.DetailNoiseScale = 1.0f;
+		Settings.RidgeStrength = 0.5f;
+		Settings.RidgeNoiseScale = 0.7f;
+		Settings.MountainSettings.bEnabled = false;
+		Settings.SmoothingIterations = 2;
+		Settings.SmoothingStrength = 0.38f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Mountain:
+		Settings.HeightScale = 1900.0f;
+		Settings.NoiseScale = 0.08f;
+		Settings.Octaves = 3;
+		Settings.Persistence = 0.42f;
+		Settings.Lacunarity = 1.8f;
+		Settings.HeightPower = 2.2f;
+		Settings.DetailStrength = 0.055f;
+		Settings.DetailNoiseScale = 2.1f;
+		Settings.RidgeStrength = 0.24f;
+		Settings.RidgeNoiseScale = 1.05f;
+
+		Settings.MountainSettings.bEnabled = true;
+		Settings.MountainSettings.Strength = 0.82f;
+		Settings.MountainSettings.Radius = 0.48f;
+		Settings.MountainSettings.Sharpness = 1.8f;
+		Settings.MountainSettings.CountMin = 1;
+		Settings.MountainSettings.CountMax = 4;
+		Settings.MountainSettings.RadiusMinMultiplier = 0.55f;
+		Settings.MountainSettings.RadiusMaxMultiplier = 1.3f;
+		Settings.MountainSettings.PlacementRange = 1.25f;
+		Settings.MountainSettings.HeightVariation = 0.35f;
+		Settings.MountainSettings.JaggedStrength = 0.26f;
+		Settings.MountainSettings.JaggedNoiseScale = 3.1f;
+
+		Settings.SmoothingIterations = 1;
+		Settings.SmoothingStrength = 0.22f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Swamp:
+		Settings.BaseHeight = -30.0f;
+		Settings.HeightScale = 300.0f;
+		Settings.NoiseScale = 0.36f;
+		Settings.Octaves = 5;
+		Settings.Persistence = 0.66f;
+		Settings.Lacunarity = 2.05f;
+		Settings.HeightPower = 2.1f;
+		Settings.DetailStrength = 0.2f;
+		Settings.DetailNoiseScale = 2.7f;
+		Settings.RidgeStrength = 0.02f;
+		Settings.RidgeNoiseScale = 1.0f;
+		Settings.MountainSettings.bEnabled = false;
+		Settings.SmoothingIterations = 2;
+		Settings.SmoothingStrength = 0.28f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	case ETerrainBiome::Tundra:
+		Settings.HeightScale = 900.0f;
+		Settings.NoiseScale = 0.11f;
+		Settings.Octaves = 4;
+		Settings.Persistence = 0.53f;
+		Settings.Lacunarity = 2.35f;
+		Settings.HeightPower = 1.5f;
+		Settings.DetailStrength = 0.06f;
+		Settings.DetailNoiseScale = 1.9f;
+		Settings.RidgeStrength = 0.34f;
+		Settings.RidgeNoiseScale = 0.95f;
+		Settings.MountainSettings.bEnabled = true;
+		Settings.MountainSettings.Strength = 0.18f;
+		Settings.MountainSettings.Radius = 0.58f;
+		Settings.MountainSettings.Sharpness = 2.6f;
+		Settings.MountainSettings.CountMin = 0;
+		Settings.MountainSettings.CountMax = 0;
+		Settings.SmoothingIterations = 1;
+		Settings.SmoothingStrength = 0.18f;
+		Settings.EdgeFalloff = 0.0f;
+		break;
+
+	default:
+		break;
+	}
+
+	return Settings;
+}

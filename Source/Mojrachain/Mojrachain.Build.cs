@@ -12,6 +12,8 @@ public class Mojrachain : ModuleRules
             "Engine",
             "InputCore",
             "ProceduralMeshComponent",
+            "Slate",
+            "SlateCore",
             "UMG"
         });
 

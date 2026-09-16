@@ -2,18 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "World/WorldMapTypes.h"
 #include "HexTileWidget.generated.h"
 
 class UGameMapWidget;
 class AProceduralTerrainActor;
 class UImage;
-
-UENUM(BlueprintType)
-enum class EHexState : uint8
-{
-	Available UMETA(DisplayName = "Available to Generate"),
-	Generated UMETA(DisplayName = "Already Generated")
-};
 
 UCLASS()
 class MOJRACHAIN_API UHexTileWidget : public UUserWidget

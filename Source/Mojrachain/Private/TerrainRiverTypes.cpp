@@ -321,7 +321,8 @@ float GetRiverHeightVariationLimit(const AProceduralTerrainActor* Terrain, float
 	}
 
 	const float DepthAllowance = Depth * 0.95f;
-	const float TerrainAllowance = Terrain->HeightScale * 0.24f;
+	const float WorldSizeScale = FMath::Max(Terrain->Size / 10000.0f, 0.1f);
+	const float TerrainAllowance = Terrain->HeightScale * WorldSizeScale * 0.24f;
 
 	switch (Terrain->Biome)
 	{

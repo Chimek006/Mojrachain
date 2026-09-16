@@ -2,11 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "HexTileWidget.h" 
-#include "TerrainRiverTypes.h"
+#include "World/WorldMapTypes.h"
 #include "GameMapWidget.generated.h"
 
 class AProceduralTerrainActor;
+class UHexTileWidget;
+class UWorldMapSubsystem;
 
 UCLASS()
 class MOJRACHAIN_API UGameMapWidget : public UUserWidget
@@ -32,6 +33,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Map Settings")
 	TSubclassOf<UUserWidget> HexTileClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|World")
+	int32 WorldSeed = 1337;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|World")
+	EWorldBiomeGenerationMode BiomeGenerationMode = EWorldBiomeGenerationMode::AllMixed;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|River", meta = (ClampMin = "100.0", UIMin = "300.0", UIMax = "2000.0"))
 	float RiverWidthMin = 650.0f;
 
@@ -53,9 +60,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|River", meta = (ClampMin = "0.0", UIMin = "500.0", UIMax = "6000.0"))
 	float RiverClearance = 1800.0f;
 
-	UPROPERTY()
-	TMap<FVector2D, EHexState> MapState;
-
 	virtual void NativeConstruct() override;
 
 	UFUNCTION() void ShowMap();
@@ -70,18 +74,13 @@ public:
 	void ExpandMap(FVector2D CenterCoords);
 
 	UFUNCTION(BlueprintCallable, Category = "Map Logic")
+	bool GenerateHex(FVector2D Coordinates, TSubclassOf<AProceduralTerrainActor> TerrainClass);
+
+	UFUNCTION(BlueprintCallable, Category = "Map Logic")
 	void HandleGeneratedTerrain(AProceduralTerrainActor* Terrain);
 
 private:
-	class UHexTileWidget* SpawnHexUI(FVector2D Coords, EHexState State);
-	bool ShouldSpawnRiverForTerrain(const AProceduralTerrainActor* Terrain);
-	bool ConfigureRiverForTerrain(AProceduralTerrainActor* Terrain);
-	void RollNextRiverDistance();
-
-	int32 GeneratedNonDesertTilesSinceRiver = 0;
-	int32 NextRiverDistance = 0;
-	bool bForceNextRiver = true;
-
-	UPROPERTY()
-	TArray<FGeneratedTerrainRiverPath> GeneratedRiverPaths;
+	UWorldMapSubsystem* ResolveWorldMapSubsystem() const;
+	FWorldMapGenerationSettings BuildWorldGenerationSettings() const;
+	UHexTileWidget* SpawnHexUI(FVector2D Coords, EHexState State);
 };

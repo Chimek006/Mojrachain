@@ -7,20 +7,18 @@ float UTerrainMountainLibrary::SmoothStep01(float Value)
 	return T * T * (3.0f - 2.0f * T);
 }
 
-float UTerrainMountainLibrary::GetTerrainHorizontalOffset(int32 Resolution, float TerrainSize)
+float UTerrainMountainLibrary::GetTerrainHorizontalOffset(int32 /*Resolution*/, float TerrainSize)
 {
-	const int32 SafeResolution = FMath::Max(Resolution, 2);
-	const float TerrainStep = TerrainSize / SafeResolution;
-
-	return FMath::FloorToFloat(0.75f * SafeResolution) * TerrainStep;
+	// Keep the mountain sampler on the exact same flat-top hex lattice as
+	// UWorldMapSubsystem. The old grid-snapped values were a few centimeters
+	// different for most resolutions, so the height field changed at every
+	// hex border and produced visible cracks/overlaps.
+	return TerrainSize * 0.75f;
 }
 
-float UTerrainMountainLibrary::GetTerrainDiagonalYOffset(int32 Resolution, float TerrainSize)
+float UTerrainMountainLibrary::GetTerrainDiagonalYOffset(int32 /*Resolution*/, float TerrainSize)
 {
-	const int32 SafeResolution = FMath::Max(Resolution, 2);
-	const float TerrainStep = TerrainSize / SafeResolution;
-
-	return FMath::FloorToFloat((FMath::Sqrt(3.0f) * 0.25f) * SafeResolution) * TerrainStep;
+	return TerrainSize * FMath::Sqrt(3.0f) * 0.25f;
 }
 
 float UTerrainMountainLibrary::GetTerrainVerticalOffset(int32 Resolution, float TerrainSize)

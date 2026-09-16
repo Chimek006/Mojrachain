@@ -8,6 +8,89 @@
 #include "TerrainRiverTypes.h"
 #include "ProceduralTerrainActor.generated.h"
 
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
+class UStaticMesh;
+class UInstancedStaticMeshComponent;
+
+USTRUCT(BlueprintType)
+struct MOJRACHAIN_API FBiomeObjectSpawnChance
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Biome", meta = (DisplayName = "Biome"))
+	ETerrainBiome Biome = ETerrainBiome::Grassland;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Biome", meta = (
+		ClampMin = "0.0",
+		ClampMax = "100.0",
+		UIMin = "0.0",
+		UIMax = "100.0",
+		DisplayName = "Chance (%)"
+		))
+	float ChancePercent = 0.0f;
+
+	FBiomeObjectSpawnChance() = default;
+
+	FBiomeObjectSpawnChance(ETerrainBiome InBiome, float InChancePercent)
+		: Biome(InBiome)
+		, ChancePercent(InChancePercent)
+	{
+	}
+};
+
+USTRUCT(BlueprintType)
+struct MOJRACHAIN_API FProceduralTerrainObjectRule
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (DisplayName = "Object Mesh"))
+	TObjectPtr<UStaticMesh> Mesh = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (DisplayName = "Biomes and Frequency"))
+	TArray<FBiomeObjectSpawnChance> BiomeChances;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (
+		ClampMin = "1",
+		UIMin = "1",
+		UIMax = "1000",
+		DisplayName = "Attempts per Hex"
+		))
+	int32 AttemptsPerHex = 250;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (
+		ClampMin = "0.01",
+		UIMin = "0.1",
+		UIMax = "5.0",
+		DisplayName = "Minimum Scale"
+		))
+	float MinScale = 0.8f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (
+		ClampMin = "0.01",
+		UIMin = "0.1",
+		UIMax = "5.0",
+		DisplayName = "Maximum Scale"
+		))
+	float MaxScale = 1.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Object", meta = (DisplayName = "Align to Terrain"))
+	bool bAlignToTerrain = true;
+
+	FProceduralTerrainObjectRule()
+	{
+		BiomeChances = {
+			FBiomeObjectSpawnChance(ETerrainBiome::Grassland, 100.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Forest, 25.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Swamp, 25.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Mountain, 40.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Hills, 75.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Desert, 0.0f),
+			FBiomeObjectSpawnChance(ETerrainBiome::Tundra, 0.0f)
+		};
+	}
+};
+
 UCLASS()
 class MOJRACHAIN_API AProceduralTerrainActor : public AActor
 {
@@ -31,12 +114,24 @@ public:
 	int32 Resolution = 100;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Basic", meta = (
-		ClampMin = "100.0"
+		ClampMin = "100.0",
+		ClampMax = "500000.0",
+		UIMin = "10000.0",
+		UIMax = "200000.0"
 		))
-	float Size = 10000.0f;
+	float Size = 100000.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Basic")
 	ETerrainBiome Biome = ETerrainBiome::Grassland;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|Biome")
+	TArray<ETerrainBiome> ActiveBiomes;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain|World")
+	FIntPoint WorldHexCoordinates = FIntPoint::ZeroValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	TObjectPtr<UMaterialInterface> TerrainMaterial;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Height", meta = (
 		DisplayName = "Base Height"
@@ -159,6 +254,11 @@ public:
 		))
 	float EdgeFalloff = 0.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Objects", meta = (
+		DisplayName = "Objects"
+		))
+	TArray<FProceduralTerrainObjectRule> ObjectSpawnRules;
+
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Terrain")
 	void GenerateTerrain();
 
@@ -167,6 +267,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Terrain")
 	void CopySettingsFrom(const AProceduralTerrainActor* OtherTerrain);
+
+	UFUNCTION(BlueprintCallable, Category = "Terrain|Biome")
+	void SetBiomeLayers(const TArray<ETerrainBiome>& InBiomes);
+
+	void SetWorldHexCoordinates(const FIntPoint& InCoordinates);
+
+	UFUNCTION(BlueprintPure, Category = "Terrain|Biome")
+	ETerrainBiome GetBiomeAtWorldLocation(float WorldX, float WorldY) const;
+
+	const TArray<ETerrainBiome>& GetActiveBiomes() const { return ActiveBiomes; }
 
 	bool ConfigureRiver(
 		float WidthMin,
@@ -185,18 +295,37 @@ public:
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Terrain|Biome")
 	void ApplyBiomePreset();
 
+	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Terrain|Surface")
+	void ApplyBiomeMaterial();
+
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 private:
+	static constexpr float ReferenceTerrainSize = 10000.0f;
 	static constexpr float NoiseScaleMultiplier = 0.001f;
+	static constexpr float TextureBiomeBlendWidth = 100.0f;
 
 	TArray<FRiverTerrainSettings> RuntimeRiverSettings;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> RuntimeTerrainMaterial;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> RuntimeTerrainMaterials;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> RuntimeObjectInstanceComponents;
 
 	float GetRealNoiseScale() const;
 	float GetRealDetailNoiseScale() const;
 	float GetRealRidgeNoiseScale() const;
+	float GetWorldSizeScale() const;
+	float GetWorldNoiseScale() const;
+	float GetBiomeTerrainTransitionWidth(ETerrainBiome FirstBiome, ETerrainBiome SecondBiome) const;
 
 	bool HasActiveRivers() const;
 	FRiverTerrainSample SampleRiverCorridor(float WorldX, float WorldY) const;
@@ -212,4 +341,33 @@ private:
 	float SmoothStep01(float Value) const;
 
 	bool IsPointInsideHex(const FVector2D& P, float Radius) const;
+
+	void EnsureDefaultObjectSpawnRules();
+	void ClearGeneratedTerrainObjects();
+	void ApplyBiomeMaterialsToSections(const TArray<ETerrainBiome>& SectionBiomes);
+	UMaterialInstanceDynamic* CreateBiomeMaterialInstance(UMaterialInterface* MaterialToUse, ETerrainBiome InBiome);
+	void CalculateBiomeWeights(
+		float LocalX,
+		float LocalY,
+		TArray<float>& OutWeights,
+		bool bForTerrainHeight = false
+	) const;
+	void CalculateGlobalBiomeWeights(
+		float WorldX,
+		float WorldY,
+		TArray<float>& OutWeights,
+		bool bForTerrainHeight = false
+	) const;
+	void CalculateFixedBiomeWeights(float LocalX, float LocalY, TArray<float>& OutWeights) const;
+	ETerrainBiome GetBiomeAtLocalLocation(float LocalX, float LocalY) const;
+	FLinearColor GetBiomeTintAtLocalLocation(float LocalX, float LocalY) const;
+	TArray<ETerrainBiome> GetNormalizedActiveBiomes() const;
+	void GenerateTerrainObjects(
+		const TArray<float>& Heights,
+		const TArray<FVector>& Normals,
+		int32 VertCount,
+		float Step,
+		float MinHeight,
+		float MaxHeight
+	);
 };

@@ -14,7 +14,8 @@ enum class ETerrainBiome : uint8
 	Desert UMETA(DisplayName = "Desert"),
 	Mountain UMETA(DisplayName = "Mountain"),
 	Swamp UMETA(DisplayName = "Swamp"),
-	Tundra UMETA(DisplayName = "Tundra")
+	Tundra UMETA(DisplayName = "Tundra"),
+	All UMETA(DisplayName = "All / Seeded Mix")
 };
 
 USTRUCT(BlueprintType)
@@ -68,6 +69,45 @@ struct MOJRACHAIN_API FBiomeTerrainSettings
 	float EdgeFalloff = 0.0f;
 };
 
+USTRUCT(BlueprintType)
+struct MOJRACHAIN_API FBiomeSurfaceSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	FLinearColor BaseColor = FLinearColor(0.18f, 0.42f, 0.08f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	FLinearColor AccentColor = FLinearColor(0.36f, 0.62f, 0.12f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	FLinearColor RockColor = FLinearColor(0.30f, 0.31f, 0.30f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	FLinearColor SnowColor = FLinearColor(0.92f, 0.96f, 1.0f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float PatternScale = 0.0025f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float Roughness = 0.82f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float RockStart = 0.55f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float RockEnd = 0.78f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float SnowStart = 0.82f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float SnowEnd = 0.96f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Terrain|Surface")
+	float SlopeRockStrength = 0.45f;
+};
+
 UCLASS()
 class MOJRACHAIN_API UTerrainBiomeLibrary : public UBlueprintFunctionLibrary
 {
@@ -76,4 +116,7 @@ class MOJRACHAIN_API UTerrainBiomeLibrary : public UBlueprintFunctionLibrary
 public:
 	UFUNCTION(BlueprintPure, Category = "Terrain|Biome")
 	static FBiomeTerrainSettings GetTerrainBiomeSettings(ETerrainBiome Biome);
+
+	UFUNCTION(BlueprintPure, Category = "Terrain|Biome")
+	static FBiomeSurfaceSettings GetBiomeSurfaceSettings(ETerrainBiome Biome);
 };

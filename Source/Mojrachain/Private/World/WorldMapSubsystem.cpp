@@ -2,6 +2,7 @@
 
 #include "EngineUtils.h"
 #include "ProceduralTerrainActor.h"
+#include "World/WorldBoundaryActor.h"
 
 namespace
 {
@@ -19,6 +20,11 @@ void UWorldMapSubsystem::Configure(const FWorldMapGenerationSettings& InSettings
 
 void UWorldMapSubsystem::ResetWorld()
 {
+	if (WorldBoundaryActor)
+	{
+		WorldBoundaryActor->ClearBoundary();
+	}
+
 	Hexes.Reset();
 	Rivers.Reset();
 	GeneratedNonDesertTilesSinceRiver = 0;
@@ -66,6 +72,7 @@ void UWorldMapSubsystem::InitializeWorld(AProceduralTerrainActor* ExistingCenter
 	}
 	CenterRecord.Biome = CenterRecord.Biomes[0];
 	Hexes.Add(FIntPoint::ZeroValue, CenterRecord);
+	UpdateWorldBoundary();
 }
 
 TArray<FIntPoint> UWorldMapSubsystem::GetNeighborDirections()
@@ -205,6 +212,7 @@ void UWorldMapSubsystem::RegisterExistingTerrain(const FIntPoint& Coordinates, A
 	}
 	Record.Biome = Record.Biomes[0];
 	Record.TerrainActor = Terrain;
+	UpdateWorldBoundary();
 }
 
 FVector2D UWorldMapSubsystem::HexToWorldOffset(const FIntPoint& Coordinates, float TerrainSize, int32 /*TerrainResolution*/)
@@ -283,6 +291,7 @@ void UWorldMapSubsystem::StoreGeneratedTerrain(const FIntPoint& Coordinates, APr
 	}
 	Record.Biome = Record.Biomes[0];
 	Record.TerrainActor = Terrain;
+	UpdateWorldBoundary();
 }
 
 bool UWorldMapSubsystem::GenerateHex(
@@ -318,9 +327,9 @@ bool UWorldMapSubsystem::GenerateHex(
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
-	// Use the non-templated overload deliberately.  The templated overload
-	// performs CastChecked internally; if a stale Blueprint class points at
-	// CoreUObject.Object, that cast is exactly the crash reported by the user.
+	// Keep this non-templated. The project has previously encountered a stale
+	// Blueprint class resolving to CoreUObject.Default__Object; typed spawn
+	// overloads can perform an internal CastChecked before our validation.
 	AActor* SpawnedActor = World->SpawnActor(
 		ResolvedTerrainClass,
 		&SpawnTransform,
@@ -699,6 +708,75 @@ bool UWorldMapSubsystem::DoesRiverAffectTerrain(
 
 void UWorldMapSubsystem::Deinitialize()
 {
+	if (WorldBoundaryActor)
+	{
+		WorldBoundaryActor->Destroy();
+		WorldBoundaryActor = nullptr;
+	}
+
 	ResetWorld();
 	Super::Deinitialize();
+}
+
+void UWorldMapSubsystem::UpdateWorldBoundary()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	AProceduralTerrainActor* SettingsSource = FindTerrainSettingsSource();
+	if (!SettingsSource)
+	{
+		for (const TPair<FIntPoint, FWorldHexRecord>& Pair : Hexes)
+		{
+			if (Pair.Value.State == EHexState::Generated && Pair.Value.TerrainActor)
+			{
+				SettingsSource = Pair.Value.TerrainActor;
+				break;
+			}
+		}
+	}
+
+	if (!SettingsSource)
+	{
+		if (WorldBoundaryActor)
+		{
+			WorldBoundaryActor->ClearBoundary();
+		}
+		return;
+	}
+
+	TSet<FIntPoint> GeneratedHexes;
+	for (const TPair<FIntPoint, FWorldHexRecord>& Pair : Hexes)
+	{
+		if (Pair.Value.State == EHexState::Generated && Pair.Value.TerrainActor)
+		{
+			GeneratedHexes.Add(Pair.Key);
+		}
+	}
+
+	if (!WorldBoundaryActor)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Name = TEXT("WorldBoundary");
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const FTransform BoundaryTransform(SettingsSource->GetActorRotation(), SettingsSource->GetActorLocation());
+		WorldBoundaryActor = World->SpawnActor<AWorldBoundaryActor>(
+			AWorldBoundaryActor::StaticClass(),
+			BoundaryTransform,
+			SpawnParams
+		);
+	}
+
+	if (WorldBoundaryActor)
+	{
+		WorldBoundaryActor->RebuildBoundary(
+			GeneratedHexes,
+			SettingsSource->Size,
+			SettingsSource->GetActorLocation(),
+			Settings.BoundaryInset
+		);
+	}
 }

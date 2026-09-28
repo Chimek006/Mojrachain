@@ -32,6 +32,9 @@ struct MOJRACHAIN_API FWorldMapGenerationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World|Biome")
 	EWorldBiomeGenerationMode BiomeGenerationMode = EWorldBiomeGenerationMode::AllMixed;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World|Boundary", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0"))
+	float BoundaryInset = 100.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World|River", meta = (ClampMin = "100.0", UIMin = "300.0", UIMax = "2000.0"))
 	float RiverWidthMin = 650.0f;
 

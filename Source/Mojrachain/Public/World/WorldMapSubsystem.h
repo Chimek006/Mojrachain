@@ -6,6 +6,7 @@
 #include "WorldMapSubsystem.generated.h"
 
 class AProceduralTerrainActor;
+class AWorldBoundaryActor;
 
 UCLASS()
 class MOJRACHAIN_API UWorldMapSubsystem : public UWorldSubsystem
@@ -46,6 +47,9 @@ private:
 	UPROPERTY(Transient)
 	TArray<FWorldRiverRecord> Rivers;
 
+	UPROPERTY(Transient)
+	TObjectPtr<AWorldBoundaryActor> WorldBoundaryActor = nullptr;
+
 	int32 GeneratedNonDesertTilesSinceRiver = 0;
 	int32 NextRiverDistance = 0;
 	bool bForceNextRiver = true;
@@ -67,4 +71,5 @@ private:
 	static float DistanceSquaredToSegment(const FVector2D& Point, const FVector2D& A, const FVector2D& B);
 
 	void StoreGeneratedTerrain(const FIntPoint& Coordinates, AProceduralTerrainActor* Terrain);
+	void UpdateWorldBoundary();
 };

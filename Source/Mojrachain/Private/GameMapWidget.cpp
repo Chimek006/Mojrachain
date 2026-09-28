@@ -63,6 +63,7 @@ FWorldMapGenerationSettings UGameMapWidget::BuildWorldGenerationSettings() const
 	FWorldMapGenerationSettings Settings;
 	Settings.WorldSeed = WorldSeed;
 	Settings.BiomeGenerationMode = BiomeGenerationMode;
+	Settings.BoundaryInset = BoundaryInset;
 	Settings.RiverWidthMin = RiverWidthMin;
 	Settings.RiverWidthMax = RiverWidthMax;
 	Settings.RiverDepthMin = RiverDepthMin;

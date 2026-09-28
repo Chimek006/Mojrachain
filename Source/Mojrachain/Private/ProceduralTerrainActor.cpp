@@ -269,6 +269,45 @@ float AProceduralTerrainActor::SampleHeight(float WorldX, float WorldY, float Lo
 		TArray<float> GlobalWeights;
 		CalculateGlobalBiomeWeights(WorldX, WorldY, GlobalWeights, true);
 
+		// All biome profiles share one low-frequency macro shape. Previously
+		// every biome sampled a different base FBM here, so a hills/desert
+		// boundary could become "flat -> noisy -> flat" even when both profiles
+		// were meant to meet gently. One shared macro field also removes six
+		// expensive FBM evaluations per vertex.
+		const float SharedBaseNoise = SampleFBM(
+			WorldX,
+			WorldY,
+			OffsetX,
+			OffsetY,
+			FMath::Max(0.18f * NoiseScaleMultiplier * GetWorldNoiseScale(), 0.00001f),
+			3
+		);
+		const float SharedBase01 = FMath::Pow(
+			FMath::Clamp((SharedBaseNoise + 1.0f) * 0.5f, 0.0f, 1.0f),
+			1.15f
+		);
+
+		float LargestWeight = 0.0f;
+		float SecondLargestWeight = 0.0f;
+		for (const float Weight : GlobalWeights)
+		{
+			if (Weight > LargestWeight)
+			{
+				SecondLargestWeight = LargestWeight;
+				LargestWeight = Weight;
+			}
+			else if (Weight > SecondLargestWeight)
+			{
+				SecondLargestWeight = Weight;
+			}
+		}
+		const float TransitionBlend = FMath::Clamp(
+			4.0f * LargestWeight * SecondLargestWeight,
+			0.0f,
+			1.0f
+		);
+		const float TransitionDamping = TransitionBlend * 0.72f;
+
 		for (int32 BiomeIndex = 0; BiomeIndex < GlobalWeights.Num(); ++BiomeIndex)
 		{
 			const float BiomeWeight = GlobalWeights[BiomeIndex];
@@ -281,17 +320,9 @@ float AProceduralTerrainActor::SampleHeight(float WorldX, float WorldY, float Lo
 			const FBiomeTerrainSettings Profile =
 				UTerrainBiomeLibrary::GetTerrainBiomeSettings(ProfileBiome);
 
-			float ProfileBase01 = (SampleFBM(
-				WorldX,
-				WorldY,
-				OffsetX,
-				OffsetY,
-				FMath::Max(Profile.NoiseScale * NoiseScaleMultiplier * GetWorldNoiseScale(), 0.00001f),
-				Profile.Octaves
-			) + 1.0f) * 0.5f;
-			ProfileBase01 = FMath::Pow(FMath::Clamp(ProfileBase01, 0.0f, 1.0f), Profile.HeightPower);
+			const float ProfileBase01 = FMath::Pow(SharedBase01, Profile.HeightPower);
 
-			const float ProfileDetail = SampleFBM(
+			float ProfileDetail = SampleFBM(
 				WorldX,
 				WorldY,
 				OffsetX - 3812.0f,
@@ -299,6 +330,7 @@ float AProceduralTerrainActor::SampleHeight(float WorldX, float WorldY, float Lo
 				FMath::Max(Profile.DetailNoiseScale * NoiseScaleMultiplier * GetWorldNoiseScale(), 0.00001f),
 				2
 			) * Profile.DetailStrength;
+			ProfileDetail *= 1.0f - 0.55f * TransitionDamping;
 
 			const float ProfileRidgeNoise = SampleFBM(
 				WorldX,
@@ -308,16 +340,17 @@ float AProceduralTerrainActor::SampleHeight(float WorldX, float WorldY, float Lo
 				FMath::Max(Profile.RidgeNoiseScale * NoiseScaleMultiplier * GetWorldNoiseScale(), 0.00001f),
 				Profile.Octaves
 			);
-			const float ProfileRidge = FMath::Square(
+			float ProfileRidge = FMath::Square(
 				FMath::Clamp(1.0f - FMath::Abs(ProfileRidgeNoise), 0.0f, 1.0f)
 			) * Profile.RidgeStrength;
+			ProfileRidge *= 1.0f - 0.72f * TransitionDamping;
 
 			const FVector ProfileActorLocation(
 				WorldX - LocalX,
 				WorldY - LocalY,
 				GetActorLocation().Z
 			);
-			const float ProfileMountain = UTerrainMountainLibrary::SampleMountainContribution(
+			float ProfileMountain = UTerrainMountainLibrary::SampleMountainContribution(
 				WorldX,
 				WorldY,
 				ProfileActorLocation,
@@ -327,6 +360,7 @@ float AProceduralTerrainActor::SampleHeight(float WorldX, float WorldY, float Lo
 				ProfileRidge,
 				Profile.MountainSettings
 			);
+			ProfileMountain *= 1.0f - 0.80f * TransitionDamping;
 
 			const float ProfileFinal01 = FMath::Clamp(
 				ProfileBase01 + ProfileDetail + ProfileRidge + ProfileMountain,
@@ -545,6 +579,21 @@ void AProceduralTerrainActor::CalculateGlobalBiomeWeights(
 		)
 	);
 
+	const bool bBiomeCacheChanged =
+		CachedGlobalBiomeSeed != Seed
+		|| !FMath::IsNearlyEqual(CachedGlobalBiomeSize, Size)
+		|| CachedGlobalBiomeCoordinates != WorldHexCoordinates
+		|| !FMath::IsNearlyEqual(CachedGlobalBiomeActorXY.X, ActorLocation.X)
+		|| !FMath::IsNearlyEqual(CachedGlobalBiomeActorXY.Y, ActorLocation.Y);
+	if (bBiomeCacheChanged)
+	{
+		GlobalBiomeSiteCache.Reset();
+		CachedGlobalBiomeSeed = Seed;
+		CachedGlobalBiomeSize = Size;
+		CachedGlobalBiomeCoordinates = WorldHexCoordinates;
+		CachedGlobalBiomeActorXY = FVector2D(ActorLocation.X, ActorLocation.Y);
+	}
+
 	const float WarpScale = 0.00035f;
 	const float WarpStrength = Radius * 0.16f;
 	const float WarpX = FMath::PerlinNoise2D(FVector2D(
@@ -593,100 +642,103 @@ void AProceduralTerrainActor::CalculateGlobalBiomeWeights(
 		FMath::RoundToInt(RoundedZ)
 	);
 
-	struct FGlobalBiomeSite
+	const TArray<FGlobalBiomeSite>* CachedSites = GlobalBiomeSiteCache.Find(QueryCoordinates);
+	if (!CachedSites)
 	{
-		FVector2D Position = FVector2D::ZeroVector;
-		ETerrainBiome Biome = ETerrainBiome::Grassland;
-	};
+		TArray<FGlobalBiomeSite> GeneratedSites;
+		GeneratedSites.Reserve(64);
 
-	TArray<FGlobalBiomeSite> Sites;
-	Sites.Reserve(64);
-
-	for (int32 OffsetX = -2; OffsetX <= 2; ++OffsetX)
-	{
-		for (int32 OffsetY = -2; OffsetY <= 2; ++OffsetY)
+		for (int32 OffsetX = -2; OffsetX <= 2; ++OffsetX)
 		{
-			if (FMath::Abs(OffsetX + OffsetY) > 2)
+			for (int32 OffsetY = -2; OffsetY <= 2; ++OffsetY)
 			{
-				continue;
-			}
-
-			const FIntPoint Coordinates = QueryCoordinates + FIntPoint(OffsetX, OffsetY);
-		const int32 HexSeed = static_cast<int32>(
-			HashCombine(GetTypeHash(Seed), GetTypeHash(Coordinates))
-		);
-		FRandomStream HexStream(HexSeed);
-
-		const int32 Roll = HexStream.RandRange(0, 99);
-		const int32 BiomeCountForHex = Roll < 50
-			? 1
-			: (Roll < 80 ? 2 : (Roll < 95 ? 3 : 4));
-
-		TArray<ETerrainBiome> AvailableBiomes = {
-			ETerrainBiome::Grassland,
-			ETerrainBiome::Forest,
-			ETerrainBiome::Hills,
-			ETerrainBiome::Desert,
-			ETerrainBiome::Mountain,
-			ETerrainBiome::Swamp,
-			ETerrainBiome::Tundra
-		};
-
-		TArray<ETerrainBiome> SelectedBiomes;
-		SelectedBiomes.Reserve(BiomeCountForHex);
-		for (int32 Index = 0; Index < BiomeCountForHex; ++Index)
-		{
-			const int32 SelectedIndex = HexStream.RandRange(Index, AvailableBiomes.Num() - 1);
-			AvailableBiomes.Swap(Index, SelectedIndex);
-			SelectedBiomes.Add(AvailableBiomes[Index]);
-		}
-
-		if (SelectedBiomes.Contains(ETerrainBiome::Desert)
-			&& SelectedBiomes.Contains(ETerrainBiome::Tundra))
-		{
-			const TArray<ETerrainBiome> BufferBiomes = {
-				ETerrainBiome::Grassland,
-				ETerrainBiome::Forest,
-				ETerrainBiome::Hills,
-				ETerrainBiome::Swamp
-			};
-
-			for (const ETerrainBiome BufferBiome : BufferBiomes)
-			{
-				if (SelectedBiomes.Contains(BufferBiome))
+				if (FMath::Abs(OffsetX + OffsetY) > 2)
 				{
 					continue;
 				}
 
-				const int32 TundraIndex = SelectedBiomes.Find(ETerrainBiome::Tundra);
-				if (TundraIndex != INDEX_NONE)
+				const FIntPoint Coordinates = QueryCoordinates + FIntPoint(OffsetX, OffsetY);
+				const int32 HexSeed = static_cast<int32>(
+					HashCombine(GetTypeHash(Seed), GetTypeHash(Coordinates))
+				);
+				FRandomStream HexStream(HexSeed);
+
+				const int32 Roll = HexStream.RandRange(0, 99);
+				const int32 BiomeCountForHex = Roll < 50
+					? 1
+					: (Roll < 80 ? 2 : (Roll < 95 ? 3 : 4));
+
+				TArray<ETerrainBiome> AvailableBiomes = {
+					ETerrainBiome::Grassland,
+					ETerrainBiome::Forest,
+					ETerrainBiome::Hills,
+					ETerrainBiome::Desert,
+					ETerrainBiome::Mountain,
+					ETerrainBiome::Swamp,
+					ETerrainBiome::Tundra
+				};
+
+				TArray<ETerrainBiome> SelectedBiomes;
+				SelectedBiomes.Reserve(BiomeCountForHex);
+				for (int32 Index = 0; Index < BiomeCountForHex; ++Index)
 				{
-					SelectedBiomes[TundraIndex] = BufferBiome;
+					const int32 SelectedIndex = HexStream.RandRange(Index, AvailableBiomes.Num() - 1);
+					AvailableBiomes.Swap(Index, SelectedIndex);
+					SelectedBiomes.Add(AvailableBiomes[Index]);
 				}
-				break;
+
+				if (SelectedBiomes.Contains(ETerrainBiome::Desert)
+					&& SelectedBiomes.Contains(ETerrainBiome::Tundra))
+				{
+					const TArray<ETerrainBiome> BufferBiomes = {
+						ETerrainBiome::Grassland,
+						ETerrainBiome::Forest,
+						ETerrainBiome::Hills,
+						ETerrainBiome::Swamp
+					};
+
+					for (const ETerrainBiome BufferBiome : BufferBiomes)
+					{
+						if (SelectedBiomes.Contains(BufferBiome))
+						{
+							continue;
+						}
+
+						const int32 TundraIndex = SelectedBiomes.Find(ETerrainBiome::Tundra);
+						if (TundraIndex != INDEX_NONE)
+						{
+							SelectedBiomes[TundraIndex] = BufferBiome;
+						}
+						break;
+					}
+				}
+
+				const FVector2D HexCenter(
+					MapOrigin.X
+					+ HorizontalOffset * static_cast<float>(Coordinates.X),
+					MapOrigin.Y
+					+ VerticalOffset * static_cast<float>(Coordinates.Y)
+					+ DiagonalYOffset * static_cast<float>(Coordinates.X)
+				);
+				FRandomStream SiteStream(HexSeed ^ 0x6E624EB7);
+
+				for (const ETerrainBiome SelectedBiome : SelectedBiomes)
+				{
+					const float Angle = SiteStream.FRandRange(0.0f, 2.0f * PI);
+					const float SiteRadius = SiteStream.FRandRange(Radius * 0.12f, Radius * 0.48f);
+					GeneratedSites.Add({
+						HexCenter + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * SiteRadius,
+						SelectedBiome
+					});
+				}
 			}
 		}
 
-		const FVector2D HexCenter(
-			MapOrigin.X
-			+ HorizontalOffset * static_cast<float>(Coordinates.X),
-			MapOrigin.Y
-			+ VerticalOffset * static_cast<float>(Coordinates.Y)
-			+ DiagonalYOffset * static_cast<float>(Coordinates.X)
-		);
-		FRandomStream SiteStream(HexSeed ^ 0x6E624EB7);
-
-		for (const ETerrainBiome SelectedBiome : SelectedBiomes)
-		{
-			const float Angle = SiteStream.FRandRange(0.0f, 2.0f * PI);
-			const float SiteRadius = SiteStream.FRandRange(Radius * 0.12f, Radius * 0.48f);
-			Sites.Add({
-				HexCenter + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * SiteRadius,
-				SelectedBiome
-			});
-		}
-		}
+		GlobalBiomeSiteCache.Add(QueryCoordinates, MoveTemp(GeneratedSites));
+		CachedSites = GlobalBiomeSiteCache.Find(QueryCoordinates);
 	}
+
+	const TArray<FGlobalBiomeSite>& Sites = *CachedSites;
 
 	int32 NearestIndex = INDEX_NONE;
 	int32 SecondNearestIndex = INDEX_NONE;
@@ -1577,26 +1629,18 @@ void AProceduralTerrainActor::GenerateTerrain()
 	const float OffsetX = Stream.FRandRange(-10000.0f, 10000.0f);
 	const float OffsetY = Stream.FRandRange(-10000.0f, 10000.0f);
 
-	TArray<FVector> Vertices;
 	TArray<FVector> Normals;
-	TArray<FVector2D> UV0;
-	TArray<FVector2D> UV1;
-	TArray<FVector2D> UV2;
-	TArray<FVector2D> UV3;
-	TArray<FLinearColor> Colors;
 	TArray<FProcMeshTangent> Tangents;
 	TArray<float> Heights;
+	TArray<FVector4> BiomeWeightsLow;
+	TArray<FVector4> BiomeWeightsHigh;
 
 	const FVector ActorLocation = GetActorLocation();
 
-	Vertices.SetNum(VertCount * VertCount);
-	UV0.SetNum(VertCount * VertCount);
-	UV1.SetNum(VertCount * VertCount);
-	UV2.SetNum(VertCount * VertCount);
-	UV3.SetNum(VertCount * VertCount);
 	Heights.SetNum(VertCount * VertCount);
-	Colors.SetNum(VertCount * VertCount);
 	Normals.SetNum(VertCount * VertCount);
+	BiomeWeightsLow.SetNum(VertCount * VertCount);
+	BiomeWeightsHigh.SetNum(VertCount * VertCount);
 
 	for (int32 Y = 0; Y < VertCount; ++Y)
 	{
@@ -1613,13 +1657,6 @@ void AProceduralTerrainActor::GenerateTerrain()
 			const float H = SampleHeight(WorldX, WorldY, LocalX, LocalY, OffsetX, OffsetY);
 
 			Heights[Idx] = H;
-
-			UV0[Idx] = FVector2D(
-				static_cast<float>(X) / static_cast<float>(SafeResolution),
-				static_cast<float>(Y) / static_cast<float>(SafeResolution)
-			) * GetWorldSizeScale();
-
-			Colors[Idx] = FLinearColor::White;
 		}
 	}
 
@@ -1763,19 +1800,6 @@ void AProceduralTerrainActor::GenerateTerrain()
 	{
 		for (int32 X = 0; X < VertCount; ++X)
 		{
-			const int32 Idx = Y * VertCount + X;
-
-			const float LocalX = X * Step - HalfSize;
-			const float LocalY = Y * Step - HalfSize;
-
-			Vertices[Idx] = FVector(LocalX, LocalY, Heights[Idx]);
-		}
-	}
-
-	for (int32 Y = 0; Y < VertCount; ++Y)
-	{
-		for (int32 X = 0; X < VertCount; ++X)
-		{
 			const float LocalX = X * Step - HalfSize;
 			const float LocalY = Y * Step - HalfSize;
 			const float HL = HeightAt(Heights, X - 1, Y);
@@ -1787,28 +1811,20 @@ void AProceduralTerrainActor::GenerateTerrain()
 			const int32 Idx = Y * VertCount + X;
 			Normals[Idx] = N;
 
-			// Store normalized height and slope in vertex color for the material.
-			// R drives lowland -> rock -> snow; G adds exposed rock on steep slopes.
-			const float Altitude01 = FMath::Clamp((Heights[Idx] - MinHeight) / HeightRange, 0.0f, 1.0f);
-			const float SlopeMask = FMath::Clamp(1.0f - N.Z, 0.0f, 1.0f);
-			Colors[Idx] = FLinearColor(Altitude01, SlopeMask, 0.0f, 1.0f);
-
 			// Fixed biome order makes the material able to select the correct
 			// texture even when a hex contains a different subset of biomes:
 			// Grassland, Forest, Hills, Desert, Mountain, Swamp, Tundra.
 			TArray<float> FixedBiomeWeights;
 			CalculateFixedBiomeWeights(LocalX, LocalY, FixedBiomeWeights);
-			Colors[Idx].B = FixedBiomeWeights.IsValidIndex(0) ? FixedBiomeWeights[0] : 0.0f;
-			Colors[Idx].A = FixedBiomeWeights.IsValidIndex(1) ? FixedBiomeWeights[1] : 0.0f;
-			UV1[Idx] = FVector2D(
+			BiomeWeightsLow[Idx] = FVector4(
+				FixedBiomeWeights.IsValidIndex(0) ? FixedBiomeWeights[0] : 0.0f,
+				FixedBiomeWeights.IsValidIndex(1) ? FixedBiomeWeights[1] : 0.0f,
 				FixedBiomeWeights.IsValidIndex(2) ? FixedBiomeWeights[2] : 0.0f,
 				FixedBiomeWeights.IsValidIndex(3) ? FixedBiomeWeights[3] : 0.0f
 			);
-			UV2[Idx] = FVector2D(
+			BiomeWeightsHigh[Idx] = FVector4(
 				FixedBiomeWeights.IsValidIndex(4) ? FixedBiomeWeights[4] : 0.0f,
-				FixedBiomeWeights.IsValidIndex(5) ? FixedBiomeWeights[5] : 0.0f
-			);
-			UV3[Idx] = FVector2D(
+				FixedBiomeWeights.IsValidIndex(5) ? FixedBiomeWeights[5] : 0.0f,
 				FixedBiomeWeights.IsValidIndex(6) ? FixedBiomeWeights[6] : 0.0f,
 				0.0f
 			);
@@ -1838,51 +1854,133 @@ void AProceduralTerrainActor::GenerateTerrain()
 		FMath::Min(SafeResolution, FMath::Min(BlendSegments, 96))
 	);
 	const float MeshNormalStep = FMath::Max(Step * 0.5f, 1.0f);
+	const int32 EstimatedSectorVertices = (EdgeSegments + 1) * (EdgeSegments + 2) / 2;
+	HexVertices.Reserve(6 * EstimatedSectorVertices);
+	HexNormals.Reserve(6 * EstimatedSectorVertices);
+	HexUV0.Reserve(6 * EstimatedSectorVertices);
+	HexUV1.Reserve(6 * EstimatedSectorVertices);
+	HexUV2.Reserve(6 * EstimatedSectorVertices);
+	HexUV3.Reserve(6 * EstimatedSectorVertices);
+	HexColors.Reserve(6 * EstimatedSectorVertices);
+	HexTriangles.Reserve(6 * EdgeSegments * EdgeSegments * 3);
 
-	auto AddExactHexVertex = [&](const FVector2D& LocalPoint) -> int32
+	auto InterpolateHeightAt = [&](const FVector2D& LocalPoint) -> float
+	{
+		const float GridX = FMath::Clamp(
+			(LocalPoint.X + HalfSize) / Step,
+			0.0f,
+			static_cast<float>(VertCount - 1)
+		);
+		const float GridY = FMath::Clamp(
+			(LocalPoint.Y + HalfSize) / Step,
+			0.0f,
+			static_cast<float>(VertCount - 1)
+		);
+		const int32 X0 = FMath::FloorToInt(GridX);
+		const int32 Y0 = FMath::FloorToInt(GridY);
+		const int32 X1 = FMath::Min(X0 + 1, VertCount - 1);
+		const int32 Y1 = FMath::Min(Y0 + 1, VertCount - 1);
+		const float TX = GridX - static_cast<float>(X0);
+		const float TY = GridY - static_cast<float>(Y0);
+		const float Bottom = FMath::Lerp(
+			HeightAt(Heights, X0, Y0),
+			HeightAt(Heights, X1, Y0),
+			TX
+		);
+		const float Top = FMath::Lerp(
+			HeightAt(Heights, X0, Y1),
+			HeightAt(Heights, X1, Y1),
+			TX
+		);
+		return FMath::Lerp(Bottom, Top, TY);
+	};
+
+    auto InterpolateBiomeWeights = [
+        &BiomeWeightsLow,
+        &BiomeWeightsHigh,
+        this,
+        VertCount,
+        HalfSize,
+		Step
+	](const FVector2D& LocalPoint, bool bExactBoundary, FVector4& OutLow, FVector4& OutHigh)
+	{
+		if (bExactBoundary)
+		{
+			TArray<float> ExactWeights;
+			CalculateFixedBiomeWeights(LocalPoint.X, LocalPoint.Y, ExactWeights);
+			OutLow = FVector4(
+				ExactWeights.IsValidIndex(0) ? ExactWeights[0] : 0.0f,
+				ExactWeights.IsValidIndex(1) ? ExactWeights[1] : 0.0f,
+				ExactWeights.IsValidIndex(2) ? ExactWeights[2] : 0.0f,
+				ExactWeights.IsValidIndex(3) ? ExactWeights[3] : 0.0f
+			);
+			OutHigh = FVector4(
+				ExactWeights.IsValidIndex(4) ? ExactWeights[4] : 0.0f,
+				ExactWeights.IsValidIndex(5) ? ExactWeights[5] : 0.0f,
+				ExactWeights.IsValidIndex(6) ? ExactWeights[6] : 0.0f,
+				0.0f
+			);
+			return;
+		}
+
+		const float GridX = FMath::Clamp(
+			(LocalPoint.X + HalfSize) / Step,
+			0.0f,
+			static_cast<float>(VertCount - 1)
+		);
+		const float GridY = FMath::Clamp(
+			(LocalPoint.Y + HalfSize) / Step,
+			0.0f,
+			static_cast<float>(VertCount - 1)
+		);
+		const int32 X0 = FMath::FloorToInt(GridX);
+		const int32 Y0 = FMath::FloorToInt(GridY);
+		const int32 X1 = FMath::Min(X0 + 1, VertCount - 1);
+		const int32 Y1 = FMath::Min(Y0 + 1, VertCount - 1);
+		const float TX = GridX - static_cast<float>(X0);
+		const float TY = GridY - static_cast<float>(Y0);
+		const FVector4 LowBottom = FMath::Lerp(
+			BiomeWeightsLow[Y0 * VertCount + X0],
+			BiomeWeightsLow[Y0 * VertCount + X1],
+			TX
+		);
+		const FVector4 LowTop = FMath::Lerp(
+			BiomeWeightsLow[Y1 * VertCount + X0],
+			BiomeWeightsLow[Y1 * VertCount + X1],
+			TX
+		);
+		const FVector4 HighBottom = FMath::Lerp(
+			BiomeWeightsHigh[Y0 * VertCount + X0],
+			BiomeWeightsHigh[Y0 * VertCount + X1],
+			TX
+		);
+		const FVector4 HighTop = FMath::Lerp(
+			BiomeWeightsHigh[Y1 * VertCount + X0],
+			BiomeWeightsHigh[Y1 * VertCount + X1],
+			TX
+		);
+		OutLow = FMath::Lerp(LowBottom, LowTop, TY);
+		OutHigh = FMath::Lerp(HighBottom, HighTop, TY);
+	};
+
+	auto AddExactHexVertex = [&](const FVector2D& LocalPoint, bool bExactBoundary) -> int32
 	{
 		const float WorldX = ActorLocation.X + LocalPoint.X;
 		const float WorldY = ActorLocation.Y + LocalPoint.Y;
-		const float Height = SampleHeight(
-			WorldX,
-			WorldY,
-			LocalPoint.X,
-			LocalPoint.Y,
-			OffsetX,
-			OffsetY
+		const float Height = bExactBoundary
+			? SampleHeight(WorldX, WorldY, LocalPoint.X, LocalPoint.Y, OffsetX, OffsetY)
+			: InterpolateHeightAt(LocalPoint);
+		const float HeightLeft = InterpolateHeightAt(
+			LocalPoint - FVector2D(MeshNormalStep, 0.0f)
 		);
-
-		const float HeightLeft = SampleHeight(
-			WorldX - MeshNormalStep,
-			WorldY,
-			LocalPoint.X - MeshNormalStep,
-			LocalPoint.Y,
-			OffsetX,
-			OffsetY
+		const float HeightRight = InterpolateHeightAt(
+			LocalPoint + FVector2D(MeshNormalStep, 0.0f)
 		);
-		const float HeightRight = SampleHeight(
-			WorldX + MeshNormalStep,
-			WorldY,
-			LocalPoint.X + MeshNormalStep,
-			LocalPoint.Y,
-			OffsetX,
-			OffsetY
+		const float HeightDown = InterpolateHeightAt(
+			LocalPoint - FVector2D(0.0f, MeshNormalStep)
 		);
-		const float HeightDown = SampleHeight(
-			WorldX,
-			WorldY - MeshNormalStep,
-			LocalPoint.X,
-			LocalPoint.Y - MeshNormalStep,
-			OffsetX,
-			OffsetY
-		);
-		const float HeightUp = SampleHeight(
-			WorldX,
-			WorldY + MeshNormalStep,
-			LocalPoint.X,
-			LocalPoint.Y + MeshNormalStep,
-			OffsetX,
-			OffsetY
+		const float HeightUp = InterpolateHeightAt(
+			LocalPoint + FVector2D(0.0f, MeshNormalStep)
 		);
 
 		const FVector Normal = FVector(
@@ -1897,8 +1995,14 @@ void AProceduralTerrainActor::GenerateTerrain()
 		);
 		const float SlopeMask = FMath::Clamp(1.0f - Normal.Z, 0.0f, 1.0f);
 
-		TArray<float> FixedBiomeWeights;
-		CalculateFixedBiomeWeights(LocalPoint.X, LocalPoint.Y, FixedBiomeWeights);
+		FVector4 FixedBiomeWeightsLow;
+		FVector4 FixedBiomeWeightsHigh;
+		InterpolateBiomeWeights(
+			LocalPoint,
+			bExactBoundary,
+			FixedBiomeWeightsLow,
+			FixedBiomeWeightsHigh
+		);
 
 		const int32 VertexIndex = HexVertices.Num();
 		HexVertices.Add(FVector(LocalPoint.X, LocalPoint.Y, Height));
@@ -1908,22 +2012,22 @@ void AProceduralTerrainActor::GenerateTerrain()
 			(LocalPoint.Y / Size) + 0.5f
 		) * GetWorldSizeScale());
 		HexUV1.Add(FVector2D(
-			FixedBiomeWeights.IsValidIndex(2) ? FixedBiomeWeights[2] : 0.0f,
-			FixedBiomeWeights.IsValidIndex(3) ? FixedBiomeWeights[3] : 0.0f
+			FixedBiomeWeightsLow.Z,
+			FixedBiomeWeightsLow.W
 		));
 		HexUV2.Add(FVector2D(
-			FixedBiomeWeights.IsValidIndex(4) ? FixedBiomeWeights[4] : 0.0f,
-			FixedBiomeWeights.IsValidIndex(5) ? FixedBiomeWeights[5] : 0.0f
+			FixedBiomeWeightsHigh.X,
+			FixedBiomeWeightsHigh.Y
 		));
 		HexUV3.Add(FVector2D(
-			FixedBiomeWeights.IsValidIndex(6) ? FixedBiomeWeights[6] : 0.0f,
+			FixedBiomeWeightsHigh.Z,
 			0.0f
 		));
 		HexColors.Add(FLinearColor(
 			Altitude01,
 			SlopeMask,
-			FixedBiomeWeights.IsValidIndex(0) ? FixedBiomeWeights[0] : 0.0f,
-			FixedBiomeWeights.IsValidIndex(1) ? FixedBiomeWeights[1] : 0.0f
+			FixedBiomeWeightsLow.X,
+			FixedBiomeWeightsLow.Y
 		));
 		return VertexIndex;
 	};
@@ -1956,7 +2060,11 @@ void AProceduralTerrainActor::GenerateTerrain()
 				const float AlphaA = static_cast<float>(I) / static_cast<float>(EdgeSegments);
 				const float AlphaB = static_cast<float>(J) / static_cast<float>(EdgeSegments);
 				const FVector2D Point = CornerA * AlphaA + CornerB * AlphaB;
-				SectorVertices[SectorIndex(I, J)] = AddExactHexVertex(Point);
+				const bool bExactBoundary =
+					I == 0
+					|| J == 0
+					|| I + J == EdgeSegments;
+				SectorVertices[SectorIndex(I, J)] = AddExactHexVertex(Point, bExactBoundary);
 			}
 		}
 

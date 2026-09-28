@@ -91,6 +91,15 @@ struct MOJRACHAIN_API FProceduralTerrainObjectRule
 	}
 };
 
+// Runtime-only entries for the deterministic world biome field. Keeping the
+// generated site layout cached avoids rebuilding the same 25-hex neighbourhood
+// for every vertex sampled during one terrain generation pass.
+struct FGlobalBiomeSite
+{
+	FVector2D Position = FVector2D::ZeroVector;
+	ETerrainBiome Biome = ETerrainBiome::Grassland;
+};
+
 UCLASS()
 class MOJRACHAIN_API AProceduralTerrainActor : public AActor
 {
@@ -310,6 +319,15 @@ private:
 	static constexpr float TextureBiomeBlendWidth = 100.0f;
 
 	TArray<FRiverTerrainSettings> RuntimeRiverSettings;
+
+	mutable TMap<FIntPoint, TArray<FGlobalBiomeSite>> GlobalBiomeSiteCache;
+	mutable int32 CachedGlobalBiomeSeed = TNumericLimits<int32>::Min();
+	mutable float CachedGlobalBiomeSize = -1.0f;
+	mutable FIntPoint CachedGlobalBiomeCoordinates = FIntPoint(ForceInitToZero);
+	mutable FVector2D CachedGlobalBiomeActorXY = FVector2D(
+		TNumericLimits<float>::Max(),
+		TNumericLimits<float>::Max()
+	);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> RuntimeTerrainMaterial;

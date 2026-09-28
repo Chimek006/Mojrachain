@@ -39,6 +39,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|World")
 	EWorldBiomeGenerationMode BiomeGenerationMode = EWorldBiomeGenerationMode::AllMixed;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|Boundary", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0"))
+	float BoundaryInset = 100.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Map Settings|River", meta = (ClampMin = "100.0", UIMin = "300.0", UIMax = "2000.0"))
 	float RiverWidthMin = 650.0f;
 

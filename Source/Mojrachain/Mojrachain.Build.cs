@@ -17,6 +17,6 @@ public class Mojrachain : ModuleRules
             "UMG"
         });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { });
+        PrivateDependencyModuleNames.AddRange(new string[] { "EnhancedInput", "UnrealEd", "BlueprintGraph" });
     }
 }

@@ -30,12 +30,12 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		Settings.Persistence = 0.6f;
 		Settings.Lacunarity = 2.2f;
 		Settings.HeightPower = 1.25f;
-		Settings.DetailStrength = 0.16f;
+		Settings.DetailStrength = 0.08f;
 		Settings.DetailNoiseScale = 3.2f;
 		Settings.RidgeStrength = 0.08f;
 		Settings.RidgeNoiseScale = 1.25f;
 		Settings.MountainSettings.bEnabled = false;
-		Settings.SmoothingIterations = 1;
+		Settings.SmoothingIterations = 0.35f;
 		Settings.SmoothingStrength = 0.18f;
 		Settings.EdgeFalloff = 0.0f;
 		break;
@@ -68,7 +68,7 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		Settings.Octaves = 2;
 		Settings.Persistence = 0.75f;
 		Settings.Lacunarity = 1.5f;
-		Settings.HeightPower = 1.55f;
+		Settings.HeightPower = 1.1f;
 		Settings.DetailStrength = 0.2f;
 		Settings.DetailNoiseScale = 1.0f;
 		Settings.RidgeStrength = 0.5f;
@@ -80,7 +80,7 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		break;
 
 	case ETerrainBiome::Mountain:
-		Settings.HeightScale = 1900.0f;
+		Settings.HeightScale = 1400.0f;
 		Settings.NoiseScale = 0.08f;
 		Settings.Octaves = 3;
 		Settings.Persistence = 0.42f;
@@ -94,7 +94,7 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		Settings.MountainSettings.bEnabled = true;
 		Settings.MountainSettings.Strength = 0.82f;
 		Settings.MountainSettings.Radius = 0.48f;
-		Settings.MountainSettings.Sharpness = 1.8f;
+		Settings.MountainSettings.Sharpness = 1.2f;
 		Settings.MountainSettings.CountMin = 1;
 		Settings.MountainSettings.CountMax = 4;
 		Settings.MountainSettings.RadiusMinMultiplier = 0.55f;
@@ -104,7 +104,7 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		Settings.MountainSettings.JaggedStrength = 0.26f;
 		Settings.MountainSettings.JaggedNoiseScale = 3.1f;
 
-		Settings.SmoothingIterations = 1;
+		Settings.SmoothingIterations = 0.35f;
 		Settings.SmoothingStrength = 0.22f;
 		Settings.EdgeFalloff = 0.0f;
 		break;

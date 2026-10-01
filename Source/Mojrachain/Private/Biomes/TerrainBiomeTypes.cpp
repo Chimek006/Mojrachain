@@ -63,15 +63,17 @@ FBiomeTerrainSettings UTerrainBiomeLibrary::GetTerrainBiomeSettings(ETerrainBiom
 		break;
 
 	case ETerrainBiome::Desert:
-		Settings.HeightScale = 500.0f;
+		// Keep desert low and relatively calm, but not sunken below the
+		// surrounding lowlands when it is blended into the All world.
+		Settings.HeightScale = 680.0f;
 		Settings.NoiseScale = 0.03f;
 		Settings.Octaves = 2;
 		Settings.Persistence = 0.75f;
 		Settings.Lacunarity = 1.5f;
-		Settings.HeightPower = 1.1f;
-		Settings.DetailStrength = 0.2f;
+		Settings.HeightPower = 1.0f;
+		Settings.DetailStrength = 0.12f;
 		Settings.DetailNoiseScale = 1.0f;
-		Settings.RidgeStrength = 0.5f;
+		Settings.RidgeStrength = 0.18f;
 		Settings.RidgeNoiseScale = 0.7f;
 		Settings.MountainSettings.bEnabled = false;
 		Settings.SmoothingIterations = 2;

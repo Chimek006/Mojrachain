@@ -299,6 +299,10 @@ float GetRiverPeakLimitByBiome(ETerrainBiome Biome)
 {
 	switch (Biome)
 	{
+	case ETerrainBiome::All:
+		// A mixed hex contains mountain and lowland profiles at once. Using a
+		// single-biome peak limit here rejected almost every valid river path.
+		return 0.90f;
 	case ETerrainBiome::Mountain:
 		return 0.44f;
 	case ETerrainBiome::Tundra:
@@ -326,6 +330,11 @@ float GetRiverHeightVariationLimit(const AProceduralTerrainActor* Terrain, float
 
 	switch (Terrain->Biome)
 	{
+	case ETerrainBiome::All:
+		// All uses one shared macro shape with several biome height profiles, so
+		// allow a broader but still bounded river valley instead of the narrow
+		// lowland limits used by a single biome.
+		return FMath::Clamp(FMath::Max(DepthAllowance, TerrainAllowance * 0.85f), 420.0f, 1400.0f);
 	case ETerrainBiome::Mountain:
 		return FMath::Clamp(FMath::Max(DepthAllowance, TerrainAllowance), 300.0f, 700.0f);
 	case ETerrainBiome::Hills:
